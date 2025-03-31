@@ -1,125 +1,239 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const VirtualAquariumApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class VirtualAquariumApp extends StatelessWidget {
+  const VirtualAquariumApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Virtual Aquarium',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const AquariumScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+// Fish class to store properties
+class Fish {
+  Offset position;
+  double dx, dy; // Direction vectors
+  Color color;
+  double speed;
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+  Fish({
+    required this.color,
+    required this.speed,
+    Offset? position,
+  })  : position = position ?? Offset(150, 150),
+        dx = (Random().nextDouble() - 0.5) * 2,
+        dy = (Random().nextDouble() - 0.5) * 2;
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  void changeDirection() {
+    dx = (Random().nextDouble() - 0.5) * 2;
+    dy = (Random().nextDouble() - 0.5) * 2;
+  }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+// Custom painter for fish shape
+class FishPainter extends CustomPainter {
+  final Color color;
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  FishPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+
+    // Fish body (oval)
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(0, 0), width: 20, height: 12),
+      paint,
+    );
+
+    // Fish tail (triangle)
+    final tailPath = Path()
+      ..moveTo(10, 0)
+      ..lineTo(20, -6)
+      ..lineTo(20, 6)
+      ..close();
+    canvas.drawPath(tailPath, paint);
+
+    // Fish eye (small white circle with black dot)
+    canvas.drawCircle(Offset(-5, -2), 2, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(-5, -2), 1, Paint()..color = Colors.black);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class AquariumScreen extends StatefulWidget {
+  const AquariumScreen({super.key});
+
+  @override
+  State<AquariumScreen> createState() => _AquariumScreenState();
+}
+
+class _AquariumScreenState extends State<AquariumScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  List<Fish> fishList = [];
+  double selectedSpeed = 1.0;
+  Color selectedColor = Colors.blue;
+  bool collisionEnabled = true;
+  double fishScale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+
+    _controller.addListener(() {
+      setState(() {
+        _updateFishPositions();
+        if (collisionEnabled) _checkCollisions();
+        fishScale = fishList.isNotEmpty ? 1.0 : 1.0; // Reset scale after growth
+      });
     });
+  }
+
+  void _updateFishPositions() {
+    for (var fish in fishList) {
+      fish.position = Offset(
+        fish.position.dx + fish.dx * fish.speed,
+        fish.position.dy + fish.dy * fish.speed,
+      );
+
+      // Bounce off edges
+      if (fish.position.dx < 20 || fish.position.dx > 280) fish.dx = -fish.dx;
+      if (fish.position.dy < 20 || fish.position.dy > 280) fish.dy = -fish.dy;
+    }
+  }
+
+  void _checkCollisions() {
+    for (int i = 0; i < fishList.length; i++) {
+      for (int j = i + 1; j < fishList.length; j++) {
+        Fish fish1 = fishList[i];
+        Fish fish2 = fishList[j];
+        if ((fish1.position.dx - fish2.position.dx).abs() < 25 &&
+            (fish1.position.dy - fish2.position.dy).abs() < 15) {
+          fish1.changeDirection();
+          fish2.changeDirection();
+          fish1.color = Random().nextBool() ? Colors.blue : Colors.red;
+          fish2.color = Random().nextBool() ? Colors.green : Colors.orange;
+        }
+      }
+    }
+  }
+
+  void _addFish({bool animateScale = true}) {
+    if (fishList.length < 10) {
+      setState(() {
+        fishList.add(Fish(color: selectedColor, speed: selectedSpeed));
+        if (animateScale) {
+          fishScale = 1.5;
+          Future.delayed(const Duration(milliseconds: 300), () {
+            setState(() => fishScale = 1.0);
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+      appBar: AppBar(title: const Text('Virtual Aquarium')),
+      body: Column(
+        children: [
+          Container(
+            width: 300,
+            height: 300,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.blue),
+              color: Colors.lightBlue[100],
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            child: Stack(
+              children: fishList
+                  .map((fish) => Positioned(
+                        left: fish.position.dx - 20,
+                        top: fish.position.dy - 10,
+                        child: Transform.scale(
+                          scale: fishScale,
+                          child: Transform.rotate(
+                            angle: atan2(fish.dy, fish.dx),
+                            child: CustomPaint(
+                              painter: FishPainter(fish.color),
+                              size: const Size(30, 20),
+                            ),
+                          ),
+                        ),
+                      ))
+                  .toList(),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                ElevatedButton(
+                  onPressed: () => _addFish(),
+                  child: const Text('Add Fish'),
+                ),
+                // Removed Save Settings button since there's no persistence
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Speed:'),
+                    Slider(
+                      value: selectedSpeed,
+                      min: 0.5,
+                      max: 3.0,
+                      onChanged: (value) {
+                        setState(() {
+                          selectedSpeed = value;
+                          for (var fish in fishList) {
+                            fish.speed = value;
+                          }
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                DropdownButton<Color>(
+                  value: selectedColor,
+                  items: [
+                    DropdownMenuItem(value: Colors.blue, child: const Text('Blue')),
+                    DropdownMenuItem(value: Colors.red, child: const Text('Red')),
+                    DropdownMenuItem(value: Colors.green, child: const Text('Green')),
+                    DropdownMenuItem(value: Colors.orange, child: const Text('Orange')),
+                  ],
+                  onChanged: (value) => setState(() => selectedColor = value!),
+                ),
+                SwitchListTile(
+                  title: const Text('Collision Detection'),
+                  value: collisionEnabled,
+                  onChanged: (value) => setState(() => collisionEnabled = value),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
